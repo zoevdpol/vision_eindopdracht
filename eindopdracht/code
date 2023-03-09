@@ -1,0 +1,106 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.datasets import cifar10
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Conv2D, Flatten, Dense, LeakyReLU, BatchNormalization, MaxPool2D, Dropout
+from tensorflow import keras
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+import segmentation_models as sm
+import xml.etree.ElementTree as ET 
+import pandas as pd
+from PIL import Image
+from skimage import io, color, data
+import tensorflow as tf
+from tensorflow.keras import layers
+import matplotlib.pyplot as plt
+import mnist
+from typing import Tuple
+from sklearn.model_selection import train_test_split
+from PIL import Image 
+
+
+#Functie die csv data uit leest en zet het in variable
+def CsvReader():
+    #csv train data laden
+    TrainCsv = pd.read_csv(
+        "C:\\Users\\zoevi\\Downloads\\RACOON\\train_labels_.csv",
+        names=["filename", "width", "height", "class", "xmin",
+            "ymin", "xmax", "ymax"])
+    #csv test data laden
+    TestCsv = pd.read_csv(
+        "C:\\Users\\zoevi\\Downloads\\RACOON\\test_labels.csv",
+        names=["filename", "width", "height", "class", "xmin",
+            "ymin", "xmax", "ymax"])
+    return TrainCsv, TestCsv
+
+
+#csv info uitladen en in variable zetten
+TrainCsv, TestCsv = CsvReader()
+
+#bevat alle image filenames
+TrainImageFiles = TrainCsv.filename
+TestImageFiles = TestCsv.filename
+
+pinis = GenerateKeypoints(TrainCsv, TrainImageFiles )
+#fotos allemaal dezelfde grootte maken
+ImageResizer(TrainImageFiles, TrainCsv)
+ImageResizer(TestImageFiles, TestCsv)
+
+#foto's zijn 96x96 groot en bevat nog rgb
+input_shape = (96, 96, 3)
+
+#xmin, ymin, xmax, ymax
+KeypointsAmount = 4
+
+lijst = GenerateKeypoints(TrainCsv, TrainImageFiles)
+#print(lijst)
+
+TrainFileList = np.array([])
+for i in range(0, len(TrainCsv.filename)-1):
+    TrainFileList = np.append(TrainFileList, TrainCsv.filename[i])
+
+TrainCoordList = np.array([])
+for i in range(0, len(TrainCsv.xmin)-1):
+    TrainCoordList = np.append(TrainCoordList, [TrainCsv.xmin[i], TrainCsv.ymin[i], TrainCsv.xmax[i], TrainCsv.ymax[i]])
+
+print(TrainFileList[-1])
+
+testimage = io.imread("C:\\Users\\zoevi\\Downloads\\RACOON\\Racoon Images\\images\\raccoon-37.jpg")
+
+for img in TrainFileList:
+    pixels = io.imread("C:\\Users\\zoevi\\Downloads\\RACOON\\Racoon Images\\images\\" + img)
+    if (pixels.shape != testimage.shape):
+        print(img) 
+
+Co = lijst[90]
+Co2 = pinis[90]
+
+imagedonk = io.imread("C:\\Users\\zoevi\\Downloads\\RACOON\\Racoon Images\\images\\" + TrainFileList[-1])
+print(imagedonk.shape)
+
+
+im = ImagesList[87]
+hm = Image.fromarray(im)
+hm.save("testtt.jpg")
+image = cv2.imread("testtt.jpg")
+
+original = cv2.imread("raccoon.jpg")
+
+out = cv2.rectangle(image,(int(Co[0]), int(Co[1])), (int(Co[2]), int(Co[3])), (255, 0, 0), 2)
+gek = cv2.rectangle(original,(int(Co2[0]), int(Co2[1])), (int(Co2[2]), int(Co2[3])), (255, 0, 0), 2)
+fig, ax = plt.subplots(3, 2, figsize=(8, 4))
+
+ax[0,0].imshow(original)
+ax[0,0].set_title("original")
+
+ax[0,1].imshow(out)
+ax[0,1].set_title("Resized")
+
+#print(TrainCsv)
+#print(TestCsv)
+
+plt.show()
