@@ -22,6 +22,25 @@ from typing import Tuple
 from sklearn.model_selection import train_test_split
 from PIL import Image 
 
+#Functie die de images resized en zorgt dat de csv op basis hiervan wordt aangepast
+def ImageResizer(imagefile, datafile):
+    for i in imagefile:
+        #alle images dezelfde grootte geven
+        image = Image.open("C:\\Users\\zoevi\\Downloads\\RACOON\\Racoon Images\\images\\"  + i)
+        image = image.resize((96,96))
+        image.save("C:\\Users\\zoevi\\Downloads\\RACOON\\Racoon Images\\images\\"  + i)
+
+    #Zorgen dat de info in de csv kloppend word
+    datafile['width_ratio'] = datafile['width']/96
+    datafile['height_ratio'] = datafile['height']/96
+
+    datafile['xmin'] = datafile['xmin']/datafile['width_ratio']
+    datafile['xmax'] = datafile['xmax']/datafile['width_ratio']
+    datafile['ymin'] = datafile['ymin']/datafile['height_ratio']
+    datafile['ymax'] = datafile['ymax']/datafile['height_ratio']
+
+    datafile['width'] = 96
+    datafile['height'] = 96
 
 #Functie die csv data uit leest en zet het in variable
 def CsvReader():
@@ -37,7 +56,6 @@ def CsvReader():
             "ymin", "xmax", "ymax"])
     return TrainCsv, TestCsv
 
-
 #csv info uitladen en in variable zetten
 TrainCsv, TestCsv = CsvReader()
 
@@ -45,7 +63,7 @@ TrainCsv, TestCsv = CsvReader()
 TrainImageFiles = TrainCsv.filename
 TestImageFiles = TestCsv.filename
 
-pinis = GenerateKeypoints(TrainCsv, TrainImageFiles )
+
 #fotos allemaal dezelfde grootte maken
 ImageResizer(TrainImageFiles, TrainCsv)
 ImageResizer(TestImageFiles, TestCsv)
@@ -55,9 +73,6 @@ input_shape = (96, 96, 3)
 
 #xmin, ymin, xmax, ymax
 KeypointsAmount = 4
-
-lijst = GenerateKeypoints(TrainCsv, TrainImageFiles)
-#print(lijst)
 
 TrainFileList = np.array([])
 for i in range(0, len(TrainCsv.filename)-1):
