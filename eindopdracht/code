@@ -1,60 +1,196 @@
-import cv2
-import numpy as np
+import cv2 as cv
 import matplotlib.pyplot as plt
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten
-from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.datasets import cifar10
-from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Conv2D, Flatten, Dense, LeakyReLU, BatchNormalization, MaxPool2D, Dropout
+from tensorflow.keras.layers import Conv2D, Flatten, Dense, LeakyReLU, BatchNormalization, MaxPool2D, Dropout, GlobalAveragePooling2D
 from tensorflow import keras
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-import segmentation_models as sm
 import xml.etree.ElementTree as ET 
 import pandas as pd
-from PIL import Image
-from skimage import io, color, data
+from skimage.transform import resize
+from skimage import io
 import tensorflow as tf
 from tensorflow.keras import layers
 import matplotlib.pyplot as plt
-import mnist
-from typing import Tuple
-from sklearn.model_selection import train_test_split
-from PIL import Image 
+import numpy as np
+import pandas as pd
+from keras import Model
+from keras.applications.mobilenet import MobileNet, preprocess_input
+from keras.layers import Conv2D, Reshape
+from keras.backend import epsilon
 
-#Functie die de images resized en zorgt dat de csv op basis hiervan wordt aangepast
-def ImageResizer(imagefile, datafile):
-    for i in imagefile:
-        #alle images dezelfde grootte geven
-        image = Image.open("C:\\Users\\zoevi\\Downloads\\RACOON\\Racoon Images\\images\\"  + i)
-        image = image.resize((96,96))
-        image.save("C:\\Users\\zoevi\\Downloads\\RACOON\\Racoon Images\\images\\"  + i)
+np.random.seed(1)
+def loss(gt,pred):
+    intersections = 0
+    unions = 0
+    diff_width = np.minimum(gt[:,0] + gt[:,2], pred[:,0] + pred[:,2]) - np.maximum(gt[:,0], pred[:,0])
+    diff_height = np.minimum(gt[:,1] + gt[:,3], pred[:,1] + pred[:,3]) - np.maximum(gt[:,1], pred[:,1])
+    intersection = diff_width * diff_height
+    
+    # Compute union
+    area_gt = gt[:,2] * gt[:,3]
+    area_pred = pred[:,2] * pred[:,3]
+    union = area_gt + area_pred - intersection
 
-    #Zorgen dat de info in de csv kloppend word
-    datafile['width_ratio'] = datafile['width']/96
-    datafile['height_ratio'] = datafile['height']/96
+#     Compute intersection and union over multiple boxes
+    for j, _ in enumerate(union):
+        if union[j] > 0 and intersection[j] > 0 and union[j] >= intersection[j]:
+            intersections += intersection[j]
+            unions += union[j]
 
-    datafile['xmin'] = datafile['xmin']/datafile['width_ratio']
-    datafile['xmax'] = datafile['xmax']/datafile['width_ratio']
-    datafile['ymin'] = datafile['ymin']/datafile['height_ratio']
-    datafile['ymax'] = datafile['ymax']/datafile['height_ratio']
+    # Compute IOU. Use epsilon to prevent division by zero
+    iou = np.round(intersections / (unions + epsilon()), 4)
+    iou = iou.astype(np.float32)
+    return iou
 
-    datafile['width'] = 96
-    datafile['height'] = 96
+def IoU(y_true, y_pred):
+    iou = tf.py_function(loss, [y_true, y_pred], tf.float32)
+    return iou
+
 
 #Functie die csv data uit leest en zet het in variable
 def CsvReader():
     #csv train data laden
     TrainCsv = pd.read_csv(
-        "C:\\Users\\zoevi\\Downloads\\RACOON\\train_labels_.csv",
+        "train_labels.csv",
         names=["filename", "width", "height", "class", "xmin",
             "ymin", "xmax", "ymax"])
     #csv test data laden
     TestCsv = pd.read_csv(
-        "C:\\Users\\zoevi\\Downloads\\RACOON\\test_labels.csv",
+        "test_labels.csv",
         names=["filename", "width", "height", "class", "xmin",
             "ymin", "xmax", "ymax"])
     return TrainCsv, TestCsv
+
+#functie die de test data resized zonder te warpen door gebruik te maken van borders
+def ResizeTestData(image):
+    borderarrayx = []
+    borderarrayy = []
+    #borderarrays maken
+    for i in range(0, 224):
+        borderarrayx.append(np.array([0, 0, 0]))
+    borderarrayx = np.array(borderarrayx)
+    shape = image.shape
+    height = shape[0]
+    width = shape[1]
+    if(height > width):
+        x = int((width/height) * 224)
+        y = 224
+        borderamount = int((224 - x)/2)
+        #resize
+        image = resize(image, (y, x, 3))
+        print(image.shape, borderamount)
+        borderarrayy = []
+        #make border array
+        for s in range(0, borderamount):
+            borderarrayy.append(np.array([0, 0, 0]))
+        borderarrayy = np.array(borderarrayy)
+        image = image.tolist()
+        #add border array
+        for j in range(0, 224):
+            for item in borderarrayy:
+                image[j].insert(0, item)
+                image[j].append(item)
+            #als borderamount ongelijk is
+            if (len(image[j])==223):
+                image[j].append(borderarrayy[0])
+            image[j] = np.array(image[j])
+        image = np.array(image)
+        print(image.shape, borderamount)          
+    elif (width != height):
+        x = 224
+        y = int((height/width) * 224)
+        borderamount = int((224 - y) /2)
+        #image resizen
+        image = resize(image, (y, x, 3))
+        print(image.shape, borderamount)
+        image = image.tolist()
+        #border toevoegen
+        for j in range(0, int(borderamount)):
+            image.insert(0, borderarrayx)
+            image.append(borderarrayx)
+            #als borderamount ongelijk is
+        if(len(image) == 223):
+            image.append(borderarrayx)
+        image = np.array(image)
+        print(image.shape, borderamount)
+    else:
+        #als image al vierkant is kan hij direcht geresized worden zonder border
+        image = resize(image, (224, 224, 3))
+        image = np.array(image)   
+    return image
+
+    
+
+#functie die een foto knipt op basis van de gegeven boundingbox en de foto resized zonder te warpen door borders toe te voegen
+def kleinefotomaker(ImagesList, TrainCoordList, TrainFileList):
+    kleinefotos = []
+    borderarrayx = []
+    borderarrayy = []
+    #borderarrays maken
+    for i in range(0, 224):
+        borderarrayx.append(np.array([0, 0, 0]))
+    borderarrayx = np.array(borderarrayx)
+    #alle foto's de grootte maken van hun boundingbox
+    for i in range(0, len(ImagesList)):
+        xmin = int(TrainCoordList[i][0])
+        ymin = int(TrainCoordList[i][1])
+        xmax = int(TrainCoordList[i][2])
+        ymax = int(TrainCoordList[i][3])
+        height = ymax - ymin
+        width = xmax - xmin
+        #als de foto groter is in de hoogte dan in de breedte
+        if(height > width):
+            x = int((width/height) * 224)
+            y = 224
+            if(x == y):
+                print("awoooga")
+            borderamount = int((224 - x)/2)
+            croppedimage = ImagesList[i][ymin:ymax, xmin:xmax]
+            croppedimage = resize(croppedimage, (y, x, 3))
+            foto = croppedimage
+            borderarrayy = []
+            for s in range(0, borderamount):
+                borderarrayy.append(np.array([0, 0, 0]))
+            borderarrayy = np.array(borderarrayy)
+            foto = foto.tolist()
+            for j in range(0, 224):
+                for item in borderarrayy:
+                    foto[j].insert(0, item)
+                    foto[j].append(item)
+                if (len(foto[j])==223):
+                    foto[j].append(borderarrayy[0])
+                foto[j] = np.array(foto[j])
+            foto = np.array(foto)
+            kleinefotos.append(foto)
+        #als de foto groter is in de breedte dan de hoogte     
+        elif (width != height):
+            x = 224
+            y = int((height/width) * 224)
+            if(x == y):
+                print("awoooga")
+            borderamount = int((224 - y) /2)
+            croppedimage = ImagesList[i][ymin:ymax, xmin:xmax]
+            croppedimage = resize(croppedimage, (y, x, 3))
+            foto = croppedimage
+            foto = foto.tolist()
+            for j in range(0, int(borderamount)):
+                foto.insert(0, borderarrayx)
+                foto.append(borderarrayx)
+                if(len(foto) == 223):
+                    foto.append(borderarrayx)
+            foto = np.array(foto)
+            kleinefotos.append(foto)
+        #als de foto al vierkant is
+        else:
+            #als de foto al vierkant is kan hij direct geresized worden
+            croppedimage = ImagesList[i][ymin:ymax, xmin:xmax]
+            croppedimage = resize(croppedimage, (224, 224, 3))
+            foto = np.array(croppedimage)
+            kleinefotos.append(foto)
+    kleinefotos = np.array(kleinefotos)
+    kleinefotos[5][0]
+    return kleinefotos
+
+
 
 #csv info uitladen en in variable zetten
 TrainCsv, TestCsv = CsvReader()
@@ -63,59 +199,71 @@ TrainCsv, TestCsv = CsvReader()
 TrainImageFiles = TrainCsv.filename
 TestImageFiles = TestCsv.filename
 
-
-#fotos allemaal dezelfde grootte maken
-ImageResizer(TrainImageFiles, TrainCsv)
-ImageResizer(TestImageFiles, TestCsv)
-
-#foto's zijn 96x96 groot en bevat nog rgb
-input_shape = (96, 96, 3)
-
 #xmin, ymin, xmax, ymax
 KeypointsAmount = 4
 
+#list van files maken
 TrainFileList = np.array([])
 for i in range(0, len(TrainCsv.filename)-1):
     TrainFileList = np.append(TrainFileList, TrainCsv.filename[i])
 
-TrainCoordList = np.array([])
+#list van coordinaten maken
+TrainCoordList = []
 for i in range(0, len(TrainCsv.xmin)-1):
-    TrainCoordList = np.append(TrainCoordList, [TrainCsv.xmin[i], TrainCsv.ymin[i], TrainCsv.xmax[i], TrainCsv.ymax[i]])
+    TrainCoordList.append([TrainCsv.xmin[i], TrainCsv.ymin[i], TrainCsv.xmax[i], TrainCsv.ymax[i]])
+TrainCoordList = np.array(TrainCoordList)
 
-print(TrainFileList[-1])
+#TrainCoordList2 = generate_keypoints(TrainCsv, TrainFileList)
 
-testimage = io.imread("C:\\Users\\zoevi\\Downloads\\RACOON\\Racoon Images\\images\\raccoon-37.jpg")
+#lijst die arrayed images bevat 
+ImagesList = []
+for image in TrainFileList:
+    ImagesList.append(preprocess_input(io.imread("./images/" + image)))
+ImagesList = np.array(ImagesList)
 
-for img in TrainFileList:
-    pixels = io.imread("C:\\Users\\zoevi\\Downloads\\RACOON\\Racoon Images\\images\\" + img)
-    if (pixels.shape != testimage.shape):
-        print(img) 
+#alle images croppen op basis van boundingbox en resizen zonder te warpen met behulp van borders
+nieuwe_input = kleinefotomaker(ImagesList=ImagesList, TrainCoordList=TrainCoordList, TrainFileList=TrainFileList)
 
-Co = lijst[90]
-Co2 = pinis[90]
+#model
+model = MobileNet(input_shape=(224,224,3), include_top=False, alpha = 1.0)
+for layers in model.layers:
+    layers.trainable = False
+x = model.layers[-1].output
+x = Conv2D(4, kernel_size=4, name="coords")(x)
+x = GlobalAveragePooling2D()(x)
+x = Reshape((4,))(x)
+model = Model(inputs=model.inputs, outputs=x)
+model.summary()
+gt = TrainCoordList
+model.compile(optimizer="Adam", loss = "mse", metrics = [IoU])
+stop = EarlyStopping(monitor='IoU', patience=10, mode="max" )
+reduce_lr = ReduceLROnPlateau(monitor='IoU',factor=0.2,patience=10, min_lr=1e-7, verbose=1, mode="max" )
+model.fit(nieuwe_input, TrainCoordList, epochs=500,callbacks=[stop,reduce_lr], verbose = 2)
 
-imagedonk = io.imread("C:\\Users\\zoevi\\Downloads\\RACOON\\Racoon Images\\images\\" + TrainFileList[-1])
-print(imagedonk.shape)
+#testen op een image
+image_test = "raccoon-1.jpg"
+test_image = cv.imread(image_test)
+print(test_image.shape)
+test_image_height, test_image_width, _ = test_image.shape
+test_image = ResizeTestData(image=test_image)
+print(test_image.shape)
+feat_scaled = preprocess_input(np.array(test_image, dtype=np.float32))
+cv.imwrite('final_test.jpg',test_image)
+images = np.array(test_image)
+test=np.expand_dims(images,axis=0)
+ans = model.predict(x=np.array([feat_scaled]))[0]
+print(abs(ans))
+ans[0] = int(ans[0] * (test_image_width / 224))
+ans[1] = int(ans[1] * (test_image_height / 224))
+ans[2] = int(ans[2] * (test_image_width / 224))
+ans[3] = int(ans[3] * (test_image_height / 224))
+print(abs(ans))
 
+#rectangle maken
+gek = cv.rectangle(test_image,(int(ans[0]), int(ans[1])), (int(ans[2]), int(ans[3])), (255, 0, 0), 2)
 
-im = ImagesList[87]
-hm = Image.fromarray(im)
-hm.save("testtt.jpg")
-image = cv2.imread("testtt.jpg")
-
-original = cv2.imread("raccoon.jpg")
-
-out = cv2.rectangle(image,(int(Co[0]), int(Co[1])), (int(Co[2]), int(Co[3])), (255, 0, 0), 2)
-gek = cv2.rectangle(original,(int(Co2[0]), int(Co2[1])), (int(Co2[2]), int(Co2[3])), (255, 0, 0), 2)
-fig, ax = plt.subplots(3, 2, figsize=(8, 4))
-
-ax[0,0].imshow(original)
-ax[0,0].set_title("original")
-
-ax[0,1].imshow(out)
-ax[0,1].set_title("Resized")
-
-#print(TrainCsv)
-#print(TestCsv)
-
-plt.show()
+#test foto met boundingbox laten zien
+fig, ax = plt.subplots(1, 1, figsize=(8, 4))
+ax.imshow(gek)
+ax.set_title("original")
+plt.show() 
