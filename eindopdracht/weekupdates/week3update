@@ -1,1 +1,8 @@
-h
+Weekupdate week 3 Zoë van de Pol:
+
+Afgelopen week heb ik alle modules en opdrachten afgerond en ben ik begonnen aan de eindopdracht. Helaas merkte ik al snel dat ik niet genoeg informatie
+had over tfrecords dus ben overgestapt naar een dataset met een csv. Ik kan de foto's uitladen door middel van de csv, gezorgd dat alle foto's dezelfde
+grootte zijn en ben gaan proberen de goeie boundingboxes bij de trainingsplaatjes te tekenen om te kijken als dat goed werkte, helaas merkte ik vrijdag
+middag dat ze boundingboxes niet helemaal kloppen dus ik ben van plan om dat morgen uit te gaan zoeken en dan meteen verder te gaan met wat ik in mijn
+planning heb staan. Ook heb ik meer een idee gekregen hoe mijn eindopdracht er uiteindelijk gaat uitzien. Ik moet alleen veel onderzoek gaan doen naar
+layers en dergelijke.
