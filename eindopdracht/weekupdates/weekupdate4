@@ -1,0 +1,5 @@
+Mijn laptop is sinds vrijdag niet meer werkend dus gebruik nu een leenlaptop van school, gelukkig had ik mijn code op github (naast een paar makkelijke
+regels code), dit zorgde wel ervoor dat ik wat tijd ben verloren aan alles op de leenlaptop zetten waardoor ik minder tijd had voor de opracht. Ik heb
+nu mijn wasbeer object detetction “werkend” alsin dat hij voorspellingen doet en daaruit bounding boxes tekend maar dat ze nog heel slecht / niet correct 
+zijn, dus ik ga komende week goed onderzoeken wat voor layers ik kan toevoegen. Hoop aan de eind van de week iets te hebben wat best goed werkt zodat ik de
+week erna heb voor het verslag en eventuele uitloop.
